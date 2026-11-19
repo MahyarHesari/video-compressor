@@ -1,36 +1,28 @@
 
-name: FFmpeg Test
+name: Real Video Compression Test
 
 on:
   workflow_dispatch:
 
 jobs:
-  test:
+  compress:
     runs-on: ubuntu-latest
 
     steps:
       - name: Get project files
         uses: actions/checkout@v4
 
-      - name: Build Docker image
+      - name: Build FFmpeg image
         run: docker build -t video-compressor .
 
-      - name: Create sample video
+      - name: Download video
+        env:
+          VIDEO_URL: https://s6.uupload.ir/filelink/mjb6xmABe60g_6820edc4a2/s01-part01-intro_6kb9j.mp4
         run: |
           mkdir -p "$RUNNER_TEMP/video"
-
-          docker run --rm \
-            -v "$RUNNER_TEMP/video:/data" \
-            video-compressor \
-            -f lavfi \
-            -i testsrc2=size=1280x720:rate=30 \
-            -f lavfi \
-            -i sine=frequency=1000:sample_rate=44100 \
-            -t 30 \
-            -c:v libx264 \
-            -preset ultrafast \
-            -c:a aac \
-            /data/input.mp4
+          curl -L --fail --show-error \
+            "$VIDEO_URL" \
+            -o "$RUNNER_TEMP/video/input.mp4"
 
       - name: Compress to 360p
         run: |
@@ -47,8 +39,14 @@ jobs:
             -movflags +faststart \
             /data/output.mp4
 
-      - name: Check output
+      - name: Check result
         run: |
+          echo "Input size:"
+          stat -c%s "$RUNNER_TEMP/video/input.mp4"
+
+          echo "Output size:"
+          stat -c%s "$RUNNER_TEMP/video/output.mp4"
+
           docker run --rm \
             -v "$RUNNER_TEMP/video:/data" \
             --entrypoint ffprobe \
@@ -58,3 +56,10 @@ jobs:
             -show_entries stream=width,height,codec_name \
             -of default=noprint_wrappers=1 \
             /data/output.mp4
+
+      - name: Save compressed video
+        uses: actions/upload-artifact@v4
+        with:
+          name: compressed-video
+          path: ${{ runner.temp }}/video/output.mp4
+          retention-days: 1
