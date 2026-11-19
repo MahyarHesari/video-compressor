@@ -1,0 +1,60 @@
+
+name: FFmpeg Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get project files
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t video-compressor .
+
+      - name: Create sample video
+        run: |
+          mkdir -p "$RUNNER_TEMP/video"
+
+          docker run --rm \
+            -v "$RUNNER_TEMP/video:/data" \
+            video-compressor \
+            -f lavfi \
+            -i testsrc2=size=1280x720:rate=30 \
+            -f lavfi \
+            -i sine=frequency=1000:sample_rate=44100 \
+            -t 30 \
+            -c:v libx264 \
+            -preset ultrafast \
+            -c:a aac \
+            /data/input.mp4
+
+      - name: Compress to 360p
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/video:/data" \
+            video-compressor \
+            -i /data/input.mp4 \
+            -vf scale=-2:360 \
+            -c:v libx264 \
+            -preset veryfast \
+            -crf 28 \
+            -c:a aac \
+            -b:a 96k \
+            -movflags +faststart \
+            /data/output.mp4
+
+      - name: Check output
+        run: |
+          docker run --rm \
+            -v "$RUNNER_TEMP/video:/data" \
+            --entrypoint ffprobe \
+            video-compressor \
+            -v error \
+            -show_entries format=duration,size \
+            -show_entries stream=width,height,codec_name \
+            -of default=noprint_wrappers=1 \
+            /data/output.mp4
